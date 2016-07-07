@@ -19,7 +19,8 @@ typedef struct {
 } OV7670_HandleTypeDef;
 
 int OV7670_Reset(OV7670_HandleTypeDef *hov);
-int OV7670_WriteReg(OV7670_HandleTypeDef *hov, uint8_t regAddr, uint8_t *pData);
+int OV7670_WriteReg(OV7670_HandleTypeDef *hov, uint8_t regAddr, const uint8_t *pData);
 int OV7670_ReadReg(OV7670_HandleTypeDef *hov, uint8_t regAddr, uint8_t *pData);
+int OV7670_WriteRegList(OV7670_HandleTypeDef *hov, const struct regval_t *reg_list);
 
 #endif /* OV7670_OV7670_H_ */

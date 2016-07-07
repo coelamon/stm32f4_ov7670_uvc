@@ -61,6 +61,7 @@ static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_I2C2_Init(void);
 void USB_DEVICE_Init(void);
 void OV7670_Init(void);
+int OV7670_Config(void);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -95,10 +96,7 @@ int main(void)
   /* USER CODE BEGIN 2 */
   USB_DEVICE_Init();
   OV7670_Init();
-
-  //int ov_reset_result = OV7670_Reset(&hov);
-  uint8_t ov_clk_rc = 0;
-  int ov_read_reg_result = OV7670_ReadReg(&hov, REG_CLKRC, &ov_clk_rc);
+  int ov_config_result = OV7670_Config();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -283,7 +281,74 @@ void OV7670_Init(void)
 {
 	hov.hi2c = &hi2c2;
 	hov.addr = OV7670_ADDRESS;
-	hov.timeout = HAL_MAX_DELAY;
+	hov.timeout = 100;
+}
+
+int OV7670_Config()
+{
+	int ov_reset_result = OV7670_Reset(&hov);
+	if (ov_reset_result != OV7670_OK)
+	{
+		return ov_reset_result;
+	}
+	int ov_read_reg_result = OV7670_ERROR;
+	int ov_write_reg_result = OV7670_ERROR;
+
+	ov_write_reg_result = OV7670_WriteRegList(&hov, ov7670_default_regs);
+	if (ov_write_reg_result != OV7670_OK)
+	{
+		return ov_write_reg_result;
+	}
+
+	ov_write_reg_result = OV7670_WriteRegList(&hov, qqvga_ov7670);
+	if (ov_write_reg_result != OV7670_OK)
+	{
+		return ov_write_reg_result;
+	}
+
+	uint8_t ov_com3 = 4; // REG_COM3 enable scaling
+	ov_write_reg_result = OV7670_WriteReg(&hov, REG_COM3, &ov_com3);
+	if (ov_write_reg_result != OV7670_OK)
+	{
+		return ov_write_reg_result;
+	}
+
+	ov_write_reg_result = OV7670_WriteRegList(&hov, yuv422_ov7670);
+	if (ov_write_reg_result != OV7670_OK)
+	{
+		return ov_write_reg_result;
+	}
+
+	// configure PCLK to 24MHz
+
+	uint8_t ov_clk_rc = 0;
+	ov_read_reg_result = OV7670_ReadReg(&hov, REG_CLKRC, &ov_clk_rc);
+	if (ov_read_reg_result != OV7670_OK)
+	{
+		return ov_read_reg_result;
+	}
+	ov_clk_rc = (ov_clk_rc & 0x80) | 0x01; // to enable prescaler by 2
+	ov_write_reg_result = OV7670_WriteReg(&hov, REG_CLKRC, &ov_clk_rc);
+	if (ov_write_reg_result != OV7670_OK)
+	{
+		return ov_write_reg_result;
+	}
+
+	uint8_t ov_dblv = 0;
+	ov_read_reg_result = OV7670_ReadReg(&hov, REG_CLKRC, &ov_dblv);
+	if (ov_read_reg_result != OV7670_OK)
+	{
+		return ov_read_reg_result;
+	}
+	ov_clk_rc = (ov_dblv & 0x3F) | DBLV_PLL6; // to enable PLL x6
+	ov_write_reg_result = OV7670_WriteReg(&hov, REG_CLKRC, &ov_dblv);
+	if (ov_write_reg_result != OV7670_OK)
+	{
+		return ov_write_reg_result;
+	}
+	HAL_Delay(100);
+
+	return OV7670_OK;
 }
 /* USER CODE END 4 */
 
