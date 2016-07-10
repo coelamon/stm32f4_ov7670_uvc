@@ -251,6 +251,16 @@ VideoControl    videoProbeControl =
   {0x00},                           // bMaxVersion
 };
 
+uint8_t  USBD_UVC_RegisterCamera (USBD_HandleTypeDef *pdev,
+                                  USBD_UVC_CameraTypeDef *camera)
+{
+  if (camera != NULL)
+  {
+    pdev->pUserData = camera;
+  }
+  return 0;
+}
+
 uint8_t  USBD_UVC_Init (USBD_HandleTypeDef *pdev,
                         uint8_t cfgidx)
 {
@@ -273,10 +283,12 @@ uint8_t  USBD_UVC_Init (USBD_HandleTypeDef *pdev,
 
   USBD_UVC_HandleTypeDef *huvc = (USBD_UVC_HandleTypeDef*) pdev->pClassData;
   huvc->interface = 0;
-  huvc->play_status = 0;
-  huvc->frame_bytes_count = 0;
-  huvc->frame_toggle_byte = 0;
+  huvc->state = UVC_STATE_OFF;
   huvc->frame_count = 0;
+  huvc->current_frame_number = 0;
+  huvc->current_frame = NULL;
+  huvc->current_frame_length = 0;
+  huvc->current_frame_sent = 0;
 
   return USBD_OK;
 }
@@ -300,6 +312,7 @@ uint8_t  USBD_UVC_DeInit (USBD_HandleTypeDef *pdev,
 uint8_t  USBD_UVC_Setup (USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req)
 {
   USBD_UVC_HandleTypeDef *huvc = (USBD_UVC_HandleTypeDef*) pdev->pClassData;
+  USBD_UVC_CameraTypeDef *camera = (USBD_UVC_CameraTypeDef*) pdev->pUserData;
 
   switch (req->bmRequest & USB_REQ_TYPE_MASK)
   {
@@ -341,11 +354,19 @@ uint8_t  USBD_UVC_Setup (USBD_HandleTypeDef *pdev, USBD_SetupReqTypedef *req)
     case USB_REQ_SET_INTERFACE:
       huvc->interface = (uint8_t)(req->wValue);
       if (huvc->interface == 1) {
-    	uint32_t debug_otg_fs_diepctl1 = *((uint32_t*)(USB_OTG_FS_PERIPH_BASE + USB_OTG_IN_ENDPOINT_BASE + (1 * USB_OTG_EP_REG_SIZE)));
-    	huvc->play_status = 1;
+    	huvc->state = UVC_STATE_READY;
+    	huvc->current_frame_number = 0;
+    	if (camera != NULL && camera->UvcOn != NULL)
+    	{
+    		camera->UvcOn();
+    	}
       } else {
         //USBD_LL_FlushEP(pdev, USB_ENDPOINT_IN(1));
-        huvc->play_status = 0;
+        huvc->state = UVC_STATE_OFF;
+        if (camera != NULL && camera->UvcOff != NULL)
+        {
+            camera->UvcOff();
+        }
       }
       break;
 
@@ -367,38 +388,83 @@ uint8_t  USBD_UVC_DataIn (USBD_HandleTypeDef *pdev,
                           uint8_t epnum)
 {
   USBD_UVC_HandleTypeDef *huvc = (USBD_UVC_HandleTypeDef*) pdev->pClassData;
+  USBD_UVC_CameraTypeDef *camera = (USBD_UVC_CameraTypeDef*) pdev->pUserData;
 
-  USBD_LL_FlushEP(pdev, USB_ENDPOINT_IN(1));
+  //USBD_LL_FlushEP(pdev, USB_ENDPOINT_IN(1));
 
-  if (huvc->frame_bytes_count >= 160*120*2)
+  if (huvc->state == UVC_STATE_NEED_FRAME)
   {
-	  huvc->frame_bytes_count = 0;
-	  huvc->frame_toggle_byte ^= 1;
-	  huvc->frame_count++;
+	  if (camera != NULL)
+	  {
+		  uint32_t frame_length;
+		  uint8_t *frame = camera->GetFrame(&frame_length);
+		  if (frame != NULL)
+		  {
+			  huvc->current_frame = frame;
+			  huvc->current_frame_length = frame_length;
+			  huvc->current_frame_sent = 0;
+			  huvc->state = UVC_STATE_BUSY;
+		  }
+	  }
+	  else
+	  {
+		  huvc->current_frame = NULL;
+		  huvc->current_frame_length = 160 * 120 * 2;
+		  huvc->current_frame_sent = 0;
+		  huvc->state = UVC_STATE_BUSY;
+	  }
   }
 
   uint32_t packet_size = 0;
   uint8_t packet[UVC_IN_EP1_PACKET_SIZE];
-  uint8_t header[2] = {2, huvc->frame_toggle_byte};
+  uint8_t header[2] = {2, huvc->current_frame_number % 2};
 
   packet[0] = header[0];
   packet[1] = header[1];
 
   packet_size = 2;
 
-  while (packet_size < UVC_IN_EP1_PACKET_SIZE && huvc->frame_bytes_count < 160*120*2)
+  if (huvc->state == UVC_STATE_BUSY)
   {
-	  if (huvc->frame_bytes_count % 2 == 0) {
-		  packet[packet_size] = (((huvc->frame_count % 10) > 5) ? (10-(huvc->frame_count % 10)) : (huvc->frame_count % 10)) * 200 / 5;
-	  } else {
-		  packet[packet_size] = 128;
+	  while (packet_size < UVC_IN_EP1_PACKET_SIZE && huvc->current_frame_sent < huvc->current_frame_length)
+	  {
+		  if (huvc->current_frame == NULL)
+		  {
+			  if (huvc->current_frame_sent % 2 == 0) {
+				  packet[packet_size] = (((huvc->frame_count % 10) > 5) ? (10-(huvc->frame_count % 10)) : (huvc->frame_count % 10)) * 200 / 5;
+			  } else {
+				  packet[packet_size] = 128;
+			  }
+		  }
+		  else
+		  {
+			  packet[packet_size] = huvc->current_frame[huvc->current_frame_sent];
+		  }
+		  packet_size++;
+		  huvc->current_frame_sent++;
 	  }
-	  packet_size++;
-	  huvc->frame_bytes_count++;
   }
 
-  if (huvc->play_status == 2) {
+  if (huvc->state == UVC_STATE_NEED_FRAME || huvc->state == UVC_STATE_BUSY)
+  {
 	  USBD_LL_Transmit(pdev, USB_ENDPOINT_IN(1), (uint8_t*)&packet, (uint32_t)packet_size);
+  }
+
+  if (huvc->state == UVC_STATE_BUSY)
+  {
+	  if (huvc->current_frame_sent >= huvc->current_frame_length)
+	  {
+		  huvc->frame_count++;
+
+		  if (camera != NULL && camera->FreeFrame != NULL && huvc->current_frame != NULL)
+		  {
+		      camera->FreeFrame(huvc->current_frame);
+		      huvc->current_frame = NULL;
+		  }
+
+		  huvc->state = UVC_STATE_NEED_FRAME;
+		  huvc->current_frame_number++;
+	  }
   }
 
   return USBD_OK;
@@ -420,11 +486,12 @@ uint8_t  USBD_UVC_SOF (USBD_HandleTypeDef *pdev)
 {
   USBD_UVC_HandleTypeDef *huvc = (USBD_UVC_HandleTypeDef*) pdev->pClassData;
 
-  if (huvc->play_status == 1)
+  if (huvc->state == UVC_STATE_READY)
   {
 	//USBD_LL_FlushEP (pdev, USB_ENDPOINT_IN(1));
-	  USBD_LL_Transmit (pdev, USB_ENDPOINT_IN(1), (uint8_t*)0x0002, 2);//header
-    huvc->play_status = 2;
+	uint32_t header = 0x0002;
+	USBD_LL_Transmit (pdev, USB_ENDPOINT_IN(1), (uint8_t*)(&header), 2);
+    huvc->state = UVC_STATE_NEED_FRAME;
   }
   return USBD_OK;
 }

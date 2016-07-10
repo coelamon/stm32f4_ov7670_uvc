@@ -33,6 +33,7 @@
 /* Includes ------------------------------------------------------------------*/
 #include "stm32f4xx_hal.h"
 #include "ov7670.h"
+#include "usbd_camera.h"
 
 /* USER CODE BEGIN Includes */
 
@@ -44,8 +45,6 @@ DMA_HandleTypeDef hdma_dcmi;
 UART_HandleTypeDef huart1;
 I2C_HandleTypeDef hi2c2;
 PCD_HandleTypeDef hpcd_USB_OTG_FS;
-OV7670_HandleTypeDef hov;
-
 /* USER CODE BEGIN PV */
 /* Private variables ---------------------------------------------------------*/
 
@@ -60,8 +59,9 @@ static void MX_USART1_UART_Init(void);
 static void MX_USB_OTG_FS_PCD_Init(void);
 static void MX_I2C2_Init(void);
 void USB_DEVICE_Init(void);
-void OV7670_Init(void);
-int OV7670_Config(void);
+//void DMA_DCMI_XferHalfCpltCallback(DMA_HandleTypeDef *hdma);
+//void DMA_DCMI_XferCpltCallback(DMA_HandleTypeDef *hdma);
+//void DMA_DCMI_XferM1CpltCallback(DMA_HandleTypeDef *hdma);
 
 /* USER CODE BEGIN PFP */
 /* Private function prototypes -----------------------------------------------*/
@@ -89,14 +89,13 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
-  //MX_DMA_Init();
-  //MX_DCMI_Init();
+  MX_DMA_Init();
+  MX_DCMI_Init();
   MX_I2C2_Init();
 
   /* USER CODE BEGIN 2 */
+  Camera_Init(&hi2c2, &hdcmi, &hdma_dcmi, GPIOA, GPIO_PIN_7);
   USB_DEVICE_Init();
-  OV7670_Init();
-  int ov_config_result = OV7670_Config();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -156,7 +155,6 @@ void SystemClock_Config(void)
 /* DCMI init function */
 void MX_DCMI_Init(void)
 {
-
   hdcmi.Instance = DCMI;
   hdcmi.Init.SynchroMode = DCMI_SYNCHRO_HARDWARE;
   hdcmi.Init.PCKPolarity = DCMI_PCKPOLARITY_RISING;
@@ -226,6 +224,10 @@ void MX_USB_OTG_FS_PCD_Init(void)
   */
 void MX_DMA_Init(void) 
 {
+  //hdma_dcmi.XferHalfCpltCallback = DMA_DCMI_XferHalfCpltCallback;
+  //hdma_dcmi.XferCpltCallback = DMA_DCMI_XferCpltCallback;
+  //hdma_dcmi.XferM1CpltCallback = DMA_DCMI_XferM1CpltCallback;
+
   /* DMA controller clock enable */
   __HAL_RCC_DMA2_CLK_ENABLE();
 
@@ -277,79 +279,20 @@ void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-void OV7670_Init(void)
+/*void DMA_DCMI_XferHalfCpltCallback(DMA_HandleTypeDef *hdma)
 {
-	hov.hi2c = &hi2c2;
-	hov.addr = OV7670_ADDRESS;
-	hov.timeout = 100;
+	for (int i = 0; i < 100; i++);
 }
 
-int OV7670_Config()
+void DMA_DCMI_XferCpltCallback(DMA_HandleTypeDef *hdma)
 {
-	int ov_reset_result = OV7670_Reset(&hov);
-	if (ov_reset_result != OV7670_OK)
-	{
-		return ov_reset_result;
-	}
-	int ov_read_reg_result = OV7670_ERROR;
-	int ov_write_reg_result = OV7670_ERROR;
-
-	ov_write_reg_result = OV7670_WriteRegList(&hov, ov7670_default_regs);
-	if (ov_write_reg_result != OV7670_OK)
-	{
-		return ov_write_reg_result;
-	}
-
-	ov_write_reg_result = OV7670_WriteRegList(&hov, qqvga_ov7670);
-	if (ov_write_reg_result != OV7670_OK)
-	{
-		return ov_write_reg_result;
-	}
-
-	uint8_t ov_com3 = 4; // REG_COM3 enable scaling
-	ov_write_reg_result = OV7670_WriteReg(&hov, REG_COM3, &ov_com3);
-	if (ov_write_reg_result != OV7670_OK)
-	{
-		return ov_write_reg_result;
-	}
-
-	ov_write_reg_result = OV7670_WriteRegList(&hov, yuv422_ov7670);
-	if (ov_write_reg_result != OV7670_OK)
-	{
-		return ov_write_reg_result;
-	}
-
-	// configure PCLK to 24MHz
-
-	uint8_t ov_clk_rc = 0;
-	ov_read_reg_result = OV7670_ReadReg(&hov, REG_CLKRC, &ov_clk_rc);
-	if (ov_read_reg_result != OV7670_OK)
-	{
-		return ov_read_reg_result;
-	}
-	ov_clk_rc = (ov_clk_rc & 0x80) | 0x01; // to enable prescaler by 2
-	ov_write_reg_result = OV7670_WriteReg(&hov, REG_CLKRC, &ov_clk_rc);
-	if (ov_write_reg_result != OV7670_OK)
-	{
-		return ov_write_reg_result;
-	}
-
-	uint8_t ov_dblv = 0;
-	ov_read_reg_result = OV7670_ReadReg(&hov, REG_CLKRC, &ov_dblv);
-	if (ov_read_reg_result != OV7670_OK)
-	{
-		return ov_read_reg_result;
-	}
-	ov_clk_rc = (ov_dblv & 0x3F) | DBLV_PLL6; // to enable PLL x6
-	ov_write_reg_result = OV7670_WriteReg(&hov, REG_CLKRC, &ov_dblv);
-	if (ov_write_reg_result != OV7670_OK)
-	{
-		return ov_write_reg_result;
-	}
-	HAL_Delay(100);
-
-	return OV7670_OK;
+	for (int i = 0; i < 100; i++);
 }
+
+void DMA_DCMI_XferM1CpltCallback(DMA_HandleTypeDef *hdma)
+{
+
+}*/
 /* USER CODE END 4 */
 
 #ifdef USE_FULL_ASSERT

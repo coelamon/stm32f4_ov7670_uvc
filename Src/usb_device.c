@@ -19,6 +19,8 @@ void USB_DEVICE_Init(void)
 
   USBD_RegisterClass(&hUsbDeviceFS, &USBD_UVC);
 
+  USBD_UVC_RegisterCamera(&hUsbDeviceFS, &USBD_Camera);
+
   USBD_Start(&hUsbDeviceFS);
 
 }

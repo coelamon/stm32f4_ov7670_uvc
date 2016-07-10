@@ -15,6 +15,7 @@
 #include "usbd_def.h"
 #include "usbd_desc.h"
 #include "usbd_uvc.h"
+#include "usbd_camera.h"
 
 extern USBD_HandleTypeDef hUsbDeviceFS;
 

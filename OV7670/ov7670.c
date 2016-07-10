@@ -29,6 +29,7 @@ int OV7670_ReadReg(OV7670_HandleTypeDef *hov, uint8_t regAddr, uint8_t *pData)
 
 int OV7670_Reset(OV7670_HandleTypeDef *hov)
 {
+	HAL_Delay(100);
 	uint8_t data = COM7_RESET;
 	if (OV7670_WriteReg(hov, REG_COM7, &data) != OV7670_OK)
 	{

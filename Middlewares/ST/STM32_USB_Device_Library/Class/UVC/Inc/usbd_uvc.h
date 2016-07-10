@@ -142,14 +142,20 @@
 #define USB_ENDPOINT_OUT(addr)                 ((addr) | 0x00)
 #define USB_ENDPOINT_IN(addr)                  ((addr) | 0x80)
 
+#define UVC_STATE_OFF 0
+#define UVC_STATE_READY 1
+#define UVC_STATE_NEED_FRAME 2
+#define UVC_STATE_BUSY 3
 
  typedef struct
  {
    uint32_t interface;
-   uint8_t  play_status; //0 - stream stopped, 1 - ready to stream, 2 - stream running
-   uint32_t frame_bytes_count;
-   uint8_t  frame_toggle_byte;
+   uint8_t  state;
    uint32_t frame_count;
+   uint32_t current_frame_number;
+   uint8_t *current_frame;
+   uint32_t current_frame_length;
+   uint32_t current_frame_sent;
  }
  USBD_UVC_HandleTypeDef;
 
@@ -160,6 +166,16 @@
 #define UVC_USR_STR_VC_OT 0x15
 #define UVC_USR_STR_VS_ITF_AS0 0x16
 #define UVC_USR_STR_VS_ITF_AS1 0x17
+
+typedef struct {
+ 	void (*UvcOn)();
+ 	void (*UvcOff)();
+ 	uint8_t *(*GetFrame)(uint32_t *pFrameLength);
+ 	void (*FreeFrame)(uint8_t *frame);
+}
+USBD_UVC_CameraTypeDef;
+
+uint8_t  USBD_UVC_RegisterCamera(USBD_HandleTypeDef   *pdev, USBD_UVC_CameraTypeDef *camera);
 
 extern USBD_ClassTypeDef  USBD_UVC;
 
