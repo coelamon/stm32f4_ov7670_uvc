@@ -34,6 +34,7 @@
 #include "stm32f4xx_hal.h"
 #include "ov7670.h"
 #include "usbd_camera.h"
+#include "dwt.h"
 
 /* USER CODE BEGIN Includes */
 
@@ -94,19 +95,25 @@ int main(void)
   MX_I2C2_Init();
 
   /* USER CODE BEGIN 2 */
+  DWT_Init();
   Camera_Init(&hi2c2, &hdcmi, &hdma_dcmi, GPIOA, GPIO_PIN_7);
   USB_DEVICE_Init();
   /* USER CODE END 2 */
 
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
+  uint32_t toggle_tick = HAL_GetTick();
   while (1)
   {
   /* USER CODE END WHILE */
 
   /* USER CODE BEGIN 3 */
-	  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_7);
-	  HAL_Delay(1000);
+	  if ((HAL_GetTick() - toggle_tick) > 1000)
+	  {
+		  HAL_GPIO_TogglePin(GPIOA, GPIO_PIN_7);
+		  toggle_tick = HAL_GetTick();
+	  }
+	  Camera_Loop();
   }
   /* USER CODE END 3 */
 

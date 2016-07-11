@@ -37,6 +37,14 @@
 // I think that a half of FIFO is a good choice
 #define UVC_IN_EP1_PACKET_SIZE         384
 
+#define UVC_VIDEO_WIDTH        160
+#define UVC_VIDEO_HEIGHT       120
+#define UVC_VIDEO_MAX_FRAME_BUF_SIZE (160*120*2)
+#define UVC_VIDEO_FPS          8
+#define UVC_VIDEO_BITRATE      (UVC_VIDEO_MAX_FRAME_BUF_SIZE*8*UVC_VIDEO_FPS)
+// in 100ns
+#define UVC_VIDEO_INTERVAL     (10000000/UVC_VIDEO_FPS)
+
 #define VC_DESC_TOTAL_SIZE ((12+1)+(15+2)+9)
 #define VS_DESC_TOTAL_SIZE ((13+1*1)+27+30+6)
 #define USB_UVC_CONFIG_DESC_TOTAL_SIZE (9+8+9+VC_DESC_TOTAL_SIZE+9+VS_DESC_TOTAL_SIZE+9+7)

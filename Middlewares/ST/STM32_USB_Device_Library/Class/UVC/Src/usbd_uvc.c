@@ -172,14 +172,14 @@ uint8_t USBD_UVC_CfgFSDesc[USB_UVC_CONFIG_DESC_TOTAL_SIZE]  __ALIGN_END =
   VS_FRAME_UNCOMPRESSED, /* bDscriptorSubtype */
   0x01, /* bFrameIndex */
   0x02, /* bmCapabilities: fixed frame-rate */
-  WBVAL(160), /* wWidth */
-  WBVAL(120), /* wHeight */
-  DBVAL(160*120*16*5), /* dwMinBitRate */
-  DBVAL(160*120*16*5), /* dwMaxBitRate */
-  DBVAL(160*120*2), /* dwMaxVideoFrameBufSize */
-  DBVAL(2000000), /* dwDefaultFrameInterval: for 5 FPS */
+  WBVAL(UVC_VIDEO_WIDTH), /* wWidth */
+  WBVAL(UVC_VIDEO_HEIGHT), /* wHeight */
+  DBVAL(UVC_VIDEO_BITRATE), /* dwMinBitRate */
+  DBVAL(UVC_VIDEO_BITRATE), /* dwMaxBitRate */
+  DBVAL(UVC_VIDEO_MAX_FRAME_BUF_SIZE), /* dwMaxVideoFrameBufSize */
+  DBVAL(UVC_VIDEO_INTERVAL), /* dwDefaultFrameInterval: for 5 FPS */
   1, /* bFrameIntervalType */
-  DBVAL(2000000), /* dwFrameInterval(1) */
+  DBVAL(UVC_VIDEO_INTERVAL), /* dwFrameInterval(1) */
 
   /* Color Matching Descriptor */
   6, /* bLength */
@@ -488,7 +488,7 @@ uint8_t  USBD_UVC_SOF (USBD_HandleTypeDef *pdev)
 
   if (huvc->state == UVC_STATE_READY)
   {
-	//USBD_LL_FlushEP (pdev, USB_ENDPOINT_IN(1));
+	USBD_LL_FlushEP (pdev, USB_ENDPOINT_IN(1)); // helps
 	uint32_t header = 0x0002;
 	USBD_LL_Transmit (pdev, USB_ENDPOINT_IN(1), (uint8_t*)(&header), 2);
     huvc->state = UVC_STATE_NEED_FRAME;

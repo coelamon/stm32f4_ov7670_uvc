@@ -4,6 +4,7 @@
  */
 
 #include "usbd_camera.h"
+#include "dwt.h"
 
 void Camera_On();
 void Camera_Off();
@@ -34,6 +35,19 @@ static uint8_t *cameraBuffers[2];
 volatile uint8_t cameraBufferState[2];
 static uint8_t currentCameraBuffer;
 static int cameraFrameCount;
+
+// statistics:
+volatile uint32_t camera_send_tick;
+uint32_t camera_send_last_ticks;
+uint32_t camera_send_min_ticks;
+uint32_t camera_send_max_ticks;
+volatile uint32_t camera_capture_tick;
+uint32_t camera_capture_last_ticks;
+uint32_t camera_capture_min_ticks;
+uint32_t camera_capture_max_ticks;
+
+uint32_t camera_log_capture_count;
+uint32_t camera_log_capture[100];
 
 void Camera_SignalError()
 {
@@ -93,6 +107,7 @@ void Camera_Fill_Buffer(int bufferIndex)
 
 	cameraBufferState[bufferIndex] = CAMERA_BUFFER_STATE_LOCKED_BY_DMA;
 	currentCameraBuffer = bufferIndex;
+	camera_capture_tick = DWT_Get(); // statistics
 	HAL_DCMI_Start_DMA(camera_hdcmi, DCMI_MODE_SNAPSHOT, cameraBuffers[bufferIndex], 160 * 120 * 2 / 4);
 }
 
@@ -108,6 +123,14 @@ void Camera_On()
 
 	cameraFrameCount = 0;
 	cameraOn = 1;
+
+	camera_send_tick = 0;
+	camera_send_min_ticks = 0x7FFFFFFF;
+	camera_send_max_ticks = 0;
+	camera_capture_tick = 0;
+	camera_capture_min_ticks = 0x7FFFFFFF;
+	camera_capture_max_ticks = 0;
+	camera_log_capture_count = 0;
 }
 
 void Camera_Off()
@@ -117,7 +140,29 @@ void Camera_Off()
 
 void Camera_Loop()
 {
+	if (camera_hdcmi->State == HAL_DCMI_STATE_READY && camera_hdma->State == HAL_DMA_STATE_READY_MEM0)
+	{
+		if (camera_capture_tick != 0)
+		{
+			// statistics
+			camera_capture_last_ticks = DWT_Get() - camera_capture_tick;
+			if (camera_capture_last_ticks > camera_capture_max_ticks)
+			{
+				camera_capture_max_ticks = camera_capture_last_ticks;
+			}
+			if (camera_capture_last_ticks < camera_capture_min_ticks)
+			{
+				camera_capture_min_ticks = camera_capture_last_ticks;
+			}
+			camera_capture_tick = 0;
 
+			if (camera_log_capture_count < 100)
+			{
+				camera_log_capture[camera_log_capture_count] = camera_capture_last_ticks;
+				camera_log_capture_count++;
+			}
+		}
+	}
 }
 
 uint8_t *Camera_GetFrame(uint32_t *pFrameLength)
@@ -148,6 +193,7 @@ uint8_t *Camera_GetFrame(uint32_t *pFrameLength)
 		{
 			cameraBufferState[i] = CAMERA_BUFFER_STATE_LOCKED_BY_UVC;
 			*pFrameLength = 160 * 120 * 2;
+			camera_send_tick = DWT_Get(); // statistics
 			return cameraBuffers[i];
 		}
 	}
@@ -163,6 +209,17 @@ void Camera_FreeFrame(uint8_t *frame)
 		if (cameraBuffers[i] == frame && cameraBufferState[i] == CAMERA_BUFFER_STATE_LOCKED_BY_UVC)
 		{
 			cameraBufferState[i] = CAMERA_BUFFER_STATE_FREE;
+
+			// statistics
+			camera_send_last_ticks = DWT_Get() - camera_send_tick;
+			if (camera_send_last_ticks > camera_send_max_ticks)
+			{
+				camera_send_max_ticks = camera_send_last_ticks;
+			}
+			if (camera_send_last_ticks < camera_send_min_ticks)
+			{
+				camera_send_min_ticks = camera_send_last_ticks;
+			}
 		}
 	}
 	cameraFrameCount++;
