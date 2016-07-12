@@ -515,6 +515,14 @@ void HAL_DCMI_IRQHandler(DCMI_HandleTypeDef *hdcmi)
       /* Clear the End of Frame flag */
       __HAL_DCMI_CLEAR_FLAG(hdcmi, DCMI_FLAG_FRAMERI);
       
+      if ((hdcmi->Instance->CR & DCMI_CR_CM) != RESET) // if snapshot mode
+      {
+        if ((hdcmi->Instance->CR & DCMI_CR_CAPTURE) == RESET) // if capture disabled
+        {
+      	  hdcmi->State= HAL_DCMI_STATE_READY;
+        }
+      }
+
       /* Process Unlocked */
       __HAL_UNLOCK(hdcmi);
       
@@ -753,7 +761,18 @@ static void DCMI_DMAXferCplt(DMA_HandleTypeDef *hdma)
   uint32_t tmp = 0U;
  
   DCMI_HandleTypeDef* hdcmi = ( DCMI_HandleTypeDef* )((DMA_HandleTypeDef* )hdma)->Parent;
-  hdcmi->State= HAL_DCMI_STATE_READY;
+
+  if ((hdcmi->Instance->CR & DCMI_CR_CM) != RESET) // if snapshot mode
+  {
+	  if ((hdcmi->Instance->CR & DCMI_CR_CAPTURE) == RESET) // if capture disabled
+	  {
+		  hdcmi->State= HAL_DCMI_STATE_READY;
+	  }
+  }
+  else
+  {
+	  hdcmi->State= HAL_DCMI_STATE_READY;
+  }
 
   if(hdcmi->XferCount != 0U)
   {
