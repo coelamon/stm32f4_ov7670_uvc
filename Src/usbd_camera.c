@@ -49,6 +49,40 @@ uint32_t camera_capture_max_ticks;
 uint32_t camera_log_capture_count;
 uint32_t camera_log_capture[100];
 
+typedef enum {
+
+	CAMERA_ON,
+	CAMERA_OFF,
+	START_DMA,
+	DMA_COMPLETE,
+	GIVE_BUFFER,
+	RETRIEVE_BUFFER
+} Camera_DebugMsg;
+
+typedef struct {
+	Camera_DebugMsg msg;
+	uint32_t bufferIndex;
+} Camera_DebugRecord;
+
+#define CAMERA_DEBUG_MAX 500
+uint32_t camera_debug_count;
+Camera_DebugRecord camera_debug[CAMERA_DEBUG_MAX];
+
+void Camera_Debug(Camera_DebugMsg msg, uint32_t bufferIndex)
+{
+	if (camera_debug_count < 0)
+	{
+		return;
+	}
+	if (camera_debug_count >= CAMERA_DEBUG_MAX)
+	{
+		return;
+	}
+	camera_debug[camera_debug_count].msg = msg;
+	camera_debug[camera_debug_count].bufferIndex = bufferIndex;
+	camera_debug_count++;
+}
+
 void Camera_SignalError()
 {
 	if (camera_error_led_port == NULL)
@@ -108,6 +142,16 @@ void Camera_Fill_Buffer(int bufferIndex)
 	cameraBufferState[bufferIndex] = CAMERA_BUFFER_STATE_LOCKED_BY_DMA;
 	currentCameraBuffer = bufferIndex;
 	camera_capture_tick = DWT_Get(); // statistics
+	Camera_Debug(START_DMA, bufferIndex);
+	/*if (camera_hdma->State != HAL_DMA_STATE_READY)
+	{
+		uint32_t dcmi_cr = camera_hdcmi->Instance->CR; // 0x40A3
+		uint32_t dma_cr = camera_hdma->Instance->CR; // 0x203551F
+		uint32_t dma_ndtr = camera_hdma->Instance->NDTR; // 0x2580
+
+		HAL_DCMI_Stop(camera_hdcmi);
+		HAL_DMA_Abort(camera_hdma);
+	}*/
 	HAL_DCMI_Start_DMA(camera_hdcmi, DCMI_MODE_SNAPSHOT, cameraBuffers[bufferIndex], 160 * 120 * 2 / 4);
 }
 
@@ -117,6 +161,8 @@ void Camera_On()
 	{
 		return;
 	}
+
+	Camera_Debug(CAMERA_ON, -1);
 
 	cameraBufferState[0] = CAMERA_BUFFER_STATE_FREE;
 	cameraBufferState[1] = CAMERA_BUFFER_STATE_FREE;
@@ -136,11 +182,18 @@ void Camera_On()
 void Camera_Off()
 {
 	cameraOn = 0;
+
+	Camera_Debug(CAMERA_OFF, -1);
 }
 
 void Camera_Loop()
 {
-	if (camera_hdcmi->State == HAL_DCMI_STATE_READY && camera_hdma->State == HAL_DMA_STATE_READY_MEM0)
+	//if (camera_hdcmi->State == HAL_DCMI_STATE_READY && camera_hdma->State == HAL_DMA_STATE_READY_MEM0)
+	uint32_t dcmi_cr = camera_hdcmi->Instance->CR;
+	uint32_t dma_ndtr = camera_hdma->Instance->NDTR;
+	if (((dcmi_cr & DCMI_CR_ENABLE) == DCMI_CR_ENABLE)
+	 && ((dcmi_cr & DCMI_CR_CAPTURE) != DCMI_CR_CAPTURE)
+	 && ((dma_ndtr == (160 * 120 * 2 / 4)) || (dma_ndtr == 0)))
 	{
 		if (camera_capture_tick != 0)
 		{
@@ -161,14 +214,27 @@ void Camera_Loop()
 				camera_log_capture[camera_log_capture_count] = camera_capture_last_ticks;
 				camera_log_capture_count++;
 			}
+
+			for (int i = 0; i < 2; i++)
+			{
+				if (camera_hdma->Instance->M0AR == cameraBuffers[i])
+				{
+					Camera_Debug(DMA_COMPLETE, i);
+				}
+			}
 		}
 	}
 }
 
 uint8_t *Camera_GetFrame(uint32_t *pFrameLength)
 {
-	if (camera_hdcmi->State == HAL_DCMI_STATE_READY
-		  && (camera_hdma->State == HAL_DMA_STATE_READY || camera_hdma->State == HAL_DMA_STATE_READY_MEM0))
+	//if (camera_hdcmi->State == HAL_DCMI_STATE_READY
+	//	  && (camera_hdma->State == HAL_DMA_STATE_READY || camera_hdma->State == HAL_DMA_STATE_READY_MEM0))
+	uint32_t dcmi_cr = camera_hdcmi->Instance->CR;
+	uint32_t dma_ndtr = camera_hdma->Instance->NDTR;
+	if (((dcmi_cr & DCMI_CR_ENABLE) == DCMI_CR_ENABLE)
+	  && ((dcmi_cr & DCMI_CR_CAPTURE) != DCMI_CR_CAPTURE)
+	  && ((dma_ndtr == (160 * 120 * 2 / 4)) || (dma_ndtr == 0)))
 	{
 		for (int i = 0; i < 2; i++)
 		{
@@ -187,6 +253,19 @@ uint8_t *Camera_GetFrame(uint32_t *pFrameLength)
 		}
 	}
 
+
+	/*for (int i = 0; i < 2; i++)
+	{
+		if (cameraBufferState[i] == CAMERA_BUFFER_STATE_READY)
+		{
+			if (cameraBuffers[i][0] == 0 && cameraBuffers[i][1] == 0) // debug
+			{
+				*pFrameLength = 0;
+				return NULL;
+			}
+		}
+	}*/
+
 	for (int i = 0; i < 2; i++)
 	{
 		if (cameraBufferState[i] == CAMERA_BUFFER_STATE_READY)
@@ -194,6 +273,7 @@ uint8_t *Camera_GetFrame(uint32_t *pFrameLength)
 			cameraBufferState[i] = CAMERA_BUFFER_STATE_LOCKED_BY_UVC;
 			*pFrameLength = 160 * 120 * 2;
 			camera_send_tick = DWT_Get(); // statistics
+			Camera_Debug(GIVE_BUFFER, i);
 			return cameraBuffers[i];
 		}
 	}
@@ -220,6 +300,8 @@ void Camera_FreeFrame(uint8_t *frame)
 			{
 				camera_send_min_ticks = camera_send_last_ticks;
 			}
+
+			Camera_Debug(RETRIEVE_BUFFER, i);
 		}
 	}
 	cameraFrameCount++;
@@ -248,14 +330,22 @@ int OV7670_Config()
 		return ov_write_reg_result;
 	}
 
-	ov_write_reg_result = OV7670_WriteRegList(&hov, qqvga_ov7670);
+	/* doesn't work
+	uint8_t ov_com10 = 0x20; // PCLK does not toggle on HBLANK
+	ov_write_reg_result = OV7670_WriteReg(&hov, REG_COM10, &ov_com10);
+	if (ov_write_reg_result != OV7670_OK)
+	{
+		return ov_write_reg_result;
+	}*/
+
+	uint8_t ov_com3 = 0x04; // REG_COM3 enable scaling
+	ov_write_reg_result = OV7670_WriteReg(&hov, REG_COM3, &ov_com3);
 	if (ov_write_reg_result != OV7670_OK)
 	{
 		return ov_write_reg_result;
 	}
 
-	uint8_t ov_com3 = 4; // REG_COM3 enable scaling
-	ov_write_reg_result = OV7670_WriteReg(&hov, REG_COM3, &ov_com3);
+	ov_write_reg_result = OV7670_WriteRegList(&hov, qqvga_ov7670);
 	if (ov_write_reg_result != OV7670_OK)
 	{
 		return ov_write_reg_result;

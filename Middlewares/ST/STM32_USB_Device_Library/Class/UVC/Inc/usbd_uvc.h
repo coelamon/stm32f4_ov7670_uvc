@@ -34,8 +34,7 @@
 //#define UVC_MAX_HS_PACKET            0x200
 
 // in bytes
-// I think that a half of FIFO is a good choice
-#define UVC_IN_EP1_PACKET_SIZE         384
+#define UVC_IN_EP1_PACKET_SIZE         (768)
 
 #define UVC_VIDEO_WIDTH        160
 #define UVC_VIDEO_HEIGHT       120
